@@ -141,7 +141,6 @@ class KNearestNeighbors(ClassifierMixin, BaseEstimator):
         score : float
             Accuracy of the model computed for the (X, y) pairs.
         """
-
         y_pred = self.predict(X)
         # Calculation of the accuracy
         accurate = (y_pred == y)
@@ -184,7 +183,6 @@ class MonthlySplit(BaseCrossValidator):
         pd.DatetimeIndex
         a data frame which column time_col is datetime format
         """
-
         if type(X) is pd.DataFrame:
             idx_source = X.index if self.time_col == "index"\
                                  else X[self.time_col]
@@ -249,7 +247,6 @@ class MonthlySplit(BaseCrossValidator):
         idx_test : ndarray
             The testing set indices for that split.
         """
-
         time_index = self._get_time_index(X)
         time_periods = time_index.to_period('M').unique().sort_values()
         months_for_train = time_periods[:-1]
