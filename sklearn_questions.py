@@ -59,6 +59,7 @@ from sklearn.model_selection import BaseCrossValidator
 from sklearn.utils.validation import check_is_fitted
 from sklearn.utils.validation import validate_data
 from sklearn.metrics.pairwise import pairwise_distances
+from sklearn.utils.multiclass import unique_labels
 
 
 class KNearestNeighbors(ClassifierMixin, BaseEstimator):
@@ -82,6 +83,15 @@ class KNearestNeighbors(ClassifierMixin, BaseEstimator):
         self : instance of KNearestNeighbors
             The current instance of the classifier
         """
+        X, y = validate_data(self, X, y)
+        # Validate n_neighbors
+        if not (isinstance(self.n_neighbors, (int, np.integer))
+                and self.n_neighbors >= 1):
+            raise ValueError("n_neighbors must be a positive integer")
+        # Store the classes seen during fit
+        self.classes_ = unique_labels(y)
+        self.X_ = X
+        self.y_ = y
         return self
 
     def predict(self, X):
@@ -97,7 +107,23 @@ class KNearestNeighbors(ClassifierMixin, BaseEstimator):
         y : ndarray, shape (n_test_samples,)
             Predicted class labels for each test data sample.
         """
-        y_pred = np.zeros(X.shape[0])
+        # Input validation
+        X = validate_data(self, X, reset=False)
+        # Check if fit has been called
+        check_is_fitted(self)
+        # Estimation of the distances
+        distances = pairwise_distances(X, self.X_, metric='euclidean')
+        # Use at most the number of training samples when selecting neighbors
+        k_eff = min(self.n_neighbors, self.X_.shape[0])
+        nbr_index = np.argsort(distances, axis=1)[:, :k_eff]
+        nbr_labels = self.y_[nbr_index]
+        # Majority vote: find most common label (works for int and float)
+        y_pred = np.array([
+            np.unique(row, return_counts=True)[0][
+                np.argmax(np.unique(row, return_counts=True)[1])
+            ]
+            for row in nbr_labels
+        ])
         return y_pred
 
     def score(self, X, y):
@@ -115,7 +141,13 @@ class KNearestNeighbors(ClassifierMixin, BaseEstimator):
         score : float
             Accuracy of the model computed for the (X, y) pairs.
         """
-        return 0.
+
+        y_pred = self.predict(X)
+        # Calculation of the accuracy
+        accurate = (y_pred == y)
+        score = np.where(accurate, 1, 0)
+        accuracy = score.sum()/len(y)
+        return accuracy
 
 
 class MonthlySplit(BaseCrossValidator):
@@ -137,6 +169,38 @@ class MonthlySplit(BaseCrossValidator):
     def __init__(self, time_col='index'):  # noqa: D107
         self.time_col = time_col
 
+    def _get_time_index(self, X):
+        """ Return DatetimeIndex from X using ``time_col`` or the index.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data, where `n_samples` is the number of samples
+            and `n_features` is the number of features.
+            can be Series or Dataframe
+
+        Returns
+        -------
+        pd.DatetimeIndex
+        a data frame which column time_col is datetime format"""
+
+        if type(X) is pd.DataFrame:
+            idx_source = X.index if self.time_col == "index"\
+                                 else X[self.time_col]
+
+        elif type(X) is pd.Series:
+            idx_source = X.index if self.time_col == "index" else X
+
+        else:
+            raise ValueError("X must be a pandas DataFrame or Series")
+
+        if not pd.api.types.is_datetime64_any_dtype(idx_source):
+            raise ValueError(
+                f"The column '{self.time_col}' must be of datetime type."
+            )
+
+        return pd.DatetimeIndex(idx_source)
+
     def get_n_splits(self, X, y=None, groups=None):
         """Return the number of splitting iterations in the cross-validator.
 
@@ -155,7 +219,14 @@ class MonthlySplit(BaseCrossValidator):
         n_splits : int
             The number of splits.
         """
-        return 0
+        time_index = self._get_time_index(X)
+        # Group data by months by year (BEFORE validate_data converts to array)
+        months = time_index.to_period('M').unique().sort_values()
+
+        # Count the number of successive months
+        n_splits = len(months) - 1
+
+        return max(0, n_splits)
 
     def split(self, X, y, groups=None):
         """Generate indices to split data into training and test set.
@@ -178,11 +249,11 @@ class MonthlySplit(BaseCrossValidator):
             The testing set indices for that split.
         """
 
-        n_samples = X.shape[0]
-        n_splits = self.get_n_splits(X, y, groups)
-        for i in range(n_splits):
-            idx_train = range(n_samples)
-            idx_test = range(n_samples)
-            yield (
-                idx_train, idx_test
-            )
+        time_index = self._get_time_index(X)
+        time_periods = time_index.to_period('M').unique().sort_values()
+        months_for_train = time_periods[:-1]
+        months_for_test = time_periods[1:]
+        for month_train, month_test in zip(months_for_train, months_for_test):
+            idx_train = np.where(time_index.to_period("M") == month_train)[0]
+            idx_test = np.where(time_index.to_period("M") == month_test)[0]
+            yield (idx_train, idx_test)
