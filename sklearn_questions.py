@@ -254,6 +254,6 @@ class MonthlySplit(BaseCrossValidator):
         months_for_train = time_periods[:-1]
         months_for_test = time_periods[1:]
         for month_train, month_test in zip(months_for_train, months_for_test):
-            idx_train = np.where(time_index.to_period("M") == month_train)[0]
-            idx_test = np.where(time_index.to_period("M") == month_test)[0]
-            yield (idx_train, idx_test)
+            train = np.where(time_index.to_period("M") == month_train)[0]
+            test = np.where(time_index.to_period("M") == month_test)[0]
+            yield (train, test)
