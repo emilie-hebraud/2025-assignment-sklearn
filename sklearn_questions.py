@@ -170,7 +170,7 @@ class MonthlySplit(BaseCrossValidator):
         self.time_col = time_col
 
     def _get_time_index(self, X):
-        """ Return DatetimeIndex from X using ``time_col`` or the index.
+        """Return DatetimeIndex from X using ``time_col`` or the index.
 
         Parameters
         ----------
@@ -182,7 +182,8 @@ class MonthlySplit(BaseCrossValidator):
         Returns
         -------
         pd.DatetimeIndex
-        a data frame which column time_col is datetime format"""
+        a data frame which column time_col is datetime format
+        """
 
         if type(X) is pd.DataFrame:
             idx_source = X.index if self.time_col == "index"\
